@@ -1,6 +1,6 @@
 {
-  "name": "claude-auto-mode-red",
-  "description": "auto-mode-red: shows which parts of a command are risky when Claude Code asks you to approve it.",
+  "name": "claude-risky-parts",
+  "description": "risky-parts: shows which parts of a command are risky when Claude Code asks you to approve it.",
   "owner": { "name": "tom-f-oconnell" },
-  "plugins": [{ "name": "auto-mode-red", "source": "./" }]
+  "plugins": [{ "name": "risky-parts", "source": "./" }]
 }

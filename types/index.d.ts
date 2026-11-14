@@ -11,6 +11,6 @@ export type Asking = Readonly<Record<string, AskingCall>>
 
 declare module 'claude-code' {
   interface PluginState {
-    'auto-mode-red': { asking: Asking }
+    'risky-parts': { asking: Asking }
   }
 }

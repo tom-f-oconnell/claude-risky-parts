@@ -1,11 +1,11 @@
 {
-  "name": "auto-mode-red",
-  "version": "0.4.0",
+  "name": "risky-parts",
+  "version": "0.5.0",
   "description": "When a permission dialog opens for a Bash command, shows which parts of the command are risky, in red: above the dialog, in a side pane, and in the tmux status line or a desktop notification.",
   "author": {
     "name": "tom-f-oconnell"
   },
-  "homepage": "https://github.com/tom-f-oconnell/claude-auto-mode-red",
+  "homepage": "https://github.com/tom-f-oconnell/claude-risky-parts",
   "license": "GPL-3.0-only",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -30,14 +30,14 @@
     "noticeCommand": {
       "type": "string",
       "title": "Command when a dialog opens",
-      "description": "A shell command run when a permission dialog opens for a Bash command with risky parts. Default: the bundled script (the tmux status line in red; a desktop notification where the pane could not open). Empty: none. It gets $AUTO_MODE_RED_TEXT, $AUTO_MODE_RED_PANE (1 if the pane is showing), $AUTO_MODE_RED_ID and $AUTO_MODE_RED_ROOT.",
-      "default": "sh \"$AUTO_MODE_RED_ROOT/scripts/notice.sh\" show"
+      "description": "A shell command run when a permission dialog opens for a Bash command with risky parts. Default: the bundled script (the tmux status line in red; a desktop notification where the pane could not open). Empty: none. It gets $RISKY_PARTS_TEXT, $RISKY_PARTS_PANE (1 if the pane is showing), $RISKY_PARTS_ID and $RISKY_PARTS_ROOT.",
+      "default": "sh \"$RISKY_PARTS_ROOT/scripts/notice.sh\" show"
     },
     "noticeClearCommand": {
       "type": "string",
       "title": "Command when the dialog is answered",
       "description": "A shell command run once that dialog is answered or times out, to take the notice back.",
-      "default": "sh \"$AUTO_MODE_RED_ROOT/scripts/notice.sh\" clear"
+      "default": "sh \"$RISKY_PARTS_ROOT/scripts/notice.sh\" clear"
     }
   }
 }

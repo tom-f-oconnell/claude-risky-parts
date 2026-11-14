@@ -72,7 +72,7 @@ function engine(
 
 function row(id: string, command: string) {
   return {
-    plugin: 'auto-mode-red',
+    plugin: 'risky-parts',
     component: 'ToolUse',
     requestId: id,
     surface: 'terminal',
@@ -101,11 +101,11 @@ test('while the dialog is open the risky parts are named, then taken back', asyn
       await Promise.resolve()
     }
     const placed = await $.ui.mount({
-      plugin: 'auto-mode-red',
+      plugin: 'risky-parts',
       component: 'Placed',
       requestId: id,
       surface: 'terminal',
-      props: { id, plugin: 'auto-mode-red' },
+      props: { id, plugin: 'risky-parts' },
     })
     const lines = (await placed.findAll({ type: 'Text' })).map(found => found.text)
     expect(lines).toEqual([
@@ -131,12 +131,12 @@ test('while the dialog is open the risky parts are named, then taken back', asyn
   expect(seen.asked).toEqual([])
   expect(seen).toMatchObject({ opened: 1, closed: 1 })
   expect(seen.runs.map(run => run.argv[2])).toEqual([
-    'sh "$AUTO_MODE_RED_ROOT/scripts/notice.sh" show',
-    'sh "$AUTO_MODE_RED_ROOT/scripts/notice.sh" clear',
+    'sh "$RISKY_PARTS_ROOT/scripts/notice.sh" show',
+    'sh "$RISKY_PARTS_ROOT/scripts/notice.sh" clear',
   ])
   expect(seen.runs[0]?.env).toMatchObject({
-    AUTO_MODE_RED_TEXT: '2 risky parts:\n(1) line 24/50: sudo rm -rf …\n(2) line 26/50: git push --force …',
-    AUTO_MODE_RED_PANE: '1',
+    RISKY_PARTS_TEXT: '2 risky parts:\n(1) line 24/50: sudo rm -rf …\n(2) line 26/50: git push --force …',
+    RISKY_PARTS_PANE: '1',
   })
 })
 
@@ -148,7 +148,7 @@ test('with no pattern matching, the model names the part once a dialog opens', a
   })
   await $.tool.call({ tool: 'Bash', command: 'echo one\nfrobnicate --all' })
   expect(seen.asked).toEqual(['haiku'])
-  expect(seen.runs[0]?.env?.AUTO_MODE_RED_TEXT).toBe('Risky part: line 2/2: frobnicate --all')
+  expect(seen.runs[0]?.env?.RISKY_PARTS_TEXT).toBe('Risky part: line 2/2: frobnicate --all')
 })
 
 test(

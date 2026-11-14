@@ -11,7 +11,7 @@ const HEAD = 8
 const MAX_PARTS = 4
 const WORDS = 3
 
-const asking = atom({ plugin: 'auto-mode-red', key: 'asking' } as const, {} as Asking)
+const asking = atom({ plugin: 'risky-parts', key: 'asking' } as const, {} as Asking)
 
 type Span = readonly [start: number, end: number]
 
@@ -178,7 +178,7 @@ export const register: Register = (on, options) => {
     if (!hasPattern && !hasFallback) {
       return next(e)
     }
-    const env = { AUTO_MODE_RED_ID: e.tool_use_id, AUTO_MODE_RED_ROOT: $.plugin.root }
+    const env = { RISKY_PARTS_ID: e.tool_use_id, RISKY_PARTS_ROOT: $.plugin.root }
     let isShown = false
     let isNoticed = false
     let didOpenPane = false
@@ -203,8 +203,8 @@ export const register: Register = (on, options) => {
           .run(['sh', '-c', noticeCommand], {
             env: {
               ...env,
-              AUTO_MODE_RED_TEXT: lines.join('\n'),
-              AUTO_MODE_RED_PANE: opened.isPlaced ? '1' : '0',
+              RISKY_PARTS_TEXT: lines.join('\n'),
+              RISKY_PARTS_PANE: opened.isPlaced ? '1' : '0',
             },
             timeoutMs: 10000,
           })

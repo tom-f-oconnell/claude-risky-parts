@@ -1,4 +1,4 @@
-# claude-auto-mode-red
+# claude-risky-parts
 
 A [Claude Code](https://claude.com/claude-code) plugin for deciding faster at a permission
 dialog. When Claude Code asks you to approve a Bash command, it shows which parts of the
@@ -10,7 +10,7 @@ command are risky, in red, so you don't have to read a 50-line script to find th
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install auto-mode-red --marketplace tom-f-oconnell/claude-auto-mode-red
+/plugin install risky-parts --marketplace tom-f-oconnell/claude-risky-parts
 ```
 
 Answer `y` to add the marketplace, then press Enter to install it for your user. It works
@@ -19,13 +19,13 @@ right away, and in every session after that.
 From a shell instead:
 
 ```
-claude plugin install auto-mode-red --marketplace tom-f-oconnell/claude-auto-mode-red
+claude plugin install risky-parts --marketplace tom-f-oconnell/claude-risky-parts
 ```
 
 In the desktop app, where `/plugin` doesn't run: click + next to the prompt box, then
-Plugins, Add marketplace with `tom-f-oconnell/claude-auto-mode-red`, then Add plugin.
+Plugins, Add marketplace with `tom-f-oconnell/claude-risky-parts`, then Add plugin.
 
-To remove it: `/plugin uninstall auto-mode-red`.
+To remove it: `/plugin uninstall risky-parts`.
 
 ## What it shows
 
@@ -78,10 +78,10 @@ Set these in `/plugin` (under the plugin's options) or `/config`:
 The bundled script, `scripts/notice.sh`, does the tmux status line and the desktop
 notification. To show the text some other way, set the two commands to your own. They get:
 
-- `$AUTO_MODE_RED_TEXT`: the text, one part per line (`noticeCommand` only)
-- `$AUTO_MODE_RED_PANE`: `1` if the side pane is showing, else `0` (`noticeCommand` only)
-- `$AUTO_MODE_RED_ID`: an id for the command, the same in both
-- `$AUTO_MODE_RED_ROOT`: the plugin's folder
+- `$RISKY_PARTS_TEXT`: the text, one part per line (`noticeCommand` only)
+- `$RISKY_PARTS_PANE`: `1` if the side pane is showing, else `0` (`noticeCommand` only)
+- `$RISKY_PARTS_ID`: an id for the command, the same in both
+- `$RISKY_PARTS_ROOT`: the plugin's folder
 
 It is a hooks module (Claude Code's function hooks, still early access), tested with
 Claude Code 2.1.325 in a terminal.
@@ -91,7 +91,7 @@ Claude Code 2.1.325 in a terminal.
 Run a session with a checkout loaded, without installing it (edits reload as you save):
 
 ```
-claude --plugin-dir ~/src/claude-auto-mode-red
+claude --plugin-dir ~/src/claude-risky-parts
 ```
 
 Validate and run the tests:
