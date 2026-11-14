@@ -1,6 +1,6 @@
 {
   "name": "auto-mode-red",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Highlights in red the part of a command that got it blocked by the auto mode classifier, and shows the classifier's reason in red.",
   "author": {
     "name": "tom-f-oconnell"

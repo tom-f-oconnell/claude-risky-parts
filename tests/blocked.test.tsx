@@ -197,3 +197,45 @@ test('a collapsed group holding a denied call is expanded', async ($, on) => {
   expect((await withDenied.find({ type: 'Text' }))?.text).toBe('expanded')
   await withDenied.unmount()
 })
+
+test('a line under the permission dialog names each risky part', async ($, on) => {
+  const notices: (string | undefined)[] = []
+  const asked: string[] = []
+  let open: (() => Promise<unknown>) | undefined
+  on('ui.notice', (_, e) => {
+    notices.push(e.text)
+    return { value: undefined }
+  })
+  on('classic.PermissionRequest', () => ({}))
+  on('model.complete', (_, e) => {
+    asked.push(e.model)
+    return { value: { isAnswered: true, text: 'frobnicate --all', usage: USAGE } }
+  })
+  // the engine: a dialog opens for the call when the test says so
+  on('tool.call', async () => {
+    await open?.()
+    return { result: {} }
+  })
+
+  await $.tool.call({ tool: 'Bash', command: 'echo a\nsudo rm -rf /x\necho b\ngit push --force o m' })
+  expect(notices).toEqual([
+    '2 risky parts:  (1) line 2: sudo rm -rf /x   (2) line 4: git push --force o m',
+  ])
+  expect(asked).toEqual([])
+
+  // no pattern, no dialog: nobody is asked
+  await $.tool.call({ tool: 'Bash', command: 'frobnicate --all' })
+  expect(asked).toEqual([])
+
+  // no pattern, a dialog: the model names the part
+  open = async () => {
+    await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'frobnicate --all' } })
+    // the dialog stays open while the mod asks the model
+    while (asked.length === 0 || notices.length < 2) {
+      await Promise.resolve()
+    }
+  }
+  await $.tool.call({ tool: 'Bash', command: 'frobnicate --all' })
+  expect(asked).toEqual(['haiku'])
+  expect(notices.at(-1)).toBe('Risky part: frobnicate --all')
+})

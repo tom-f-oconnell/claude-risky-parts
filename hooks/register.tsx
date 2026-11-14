@@ -11,6 +11,7 @@ const MARKER = 'denied by the Claude Code auto mode classifier'
 // shown in all when no part could be singled out.
 const CONTEXT = 1
 const HEAD = 8
+const MAX_NOTICE_PARTS = 4
 
 const blocked = atom({ plugin: 'auto-mode-red', key: 'blocked' } as const, {} as Blocked)
 
@@ -134,11 +135,43 @@ function pieces(line: string, lineStart: number, spans: readonly Span[]) {
   return out
 }
 
-function prompt(command: string, reason: string): string {
+/** The one line shown under a permission dialog: each highlighted part with
+ * its line number, cut short. Undefined when there is none.
+ */
+export function noticeFor(command: string, spans: readonly Span[]): string | undefined {
+  if (spans.length === 0) {
+    return undefined
+  }
+  const isMultiline = command.includes('\n')
+  const parts = spans.slice(0, MAX_NOTICE_PARTS).map(([start, end]) => {
+    const text = command.slice(start, end).replace(/\s+/g, ' ')
+    const short = text.length > 60 ? `${text.slice(0, 59)}…` : text
+    const line = command.slice(0, start).split('\n').length
+    return isMultiline ? `line ${line}: ${short}` : short
+  })
+  const more = spans.length - parts.length
   return (
-    'A safety classifier blocked the shell command below' +
-    (reason === '' ? '.' : `, giving the reason: ${reason}`) +
-    '\nReply with the part of the command most likely to have caused the block, ' +
+    (spans.length === 1 ? 'Risky part: ' : `${spans.length} risky parts:  `) +
+    parts.map((part, i) => (spans.length === 1 ? part : `(${i + 1}) ${part}`)).join('   ') +
+    (more > 0 ? `   and ${more} more` : '')
+  )
+}
+
+function parseSnippets(reply: string, command: string): string[] {
+  return reply
+    .split('\n')
+    .map(s => s.trim().replace(/^`+|`+$/g, ''))
+    .filter(s => s !== '' && command.includes(s))
+    .slice(0, 3)
+}
+
+function prompt(command: string, reason: string | undefined): string {
+  return (
+    (reason === undefined
+      ? 'A safety classifier wants a person to approve the shell command below before it runs.'
+      : 'A safety classifier blocked the shell command below' +
+        (reason === '' ? '.' : `, giving the reason: ${reason}`)) +
+    '\nReply with the part of the command most likely to have caused that, ' +
     'copied exactly, character for character, as short as identifies it (one ' +
     'command or pipeline, not the whole script). If several separate parts ' +
     'did, give each on its own line, three at most. Reply with those parts ' +
@@ -158,6 +191,61 @@ export const register: Register = (on, options) => {
   const model = typeof options.model === 'string' ? options.model.trim() : ''
   const hasFallback = options.modelFallback !== false && model !== ''
 
+  // Bash calls in flight by command, each waiting to hear that a permission
+  // dialog is opening for it.
+  const waiting = new Map<string, () => void>()
+
+  // Under a Bash call's permission dialog, one line naming the risky parts.
+  // Patterns are matched before the dialog can open; the model is asked only
+  // once one is opening, from this hook, which is alive for as long as it is.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const command = e.command
+    const notify = (snippets?: readonly string[]) => {
+      const text = noticeFor(command, findSpans(command, patterns, snippets))
+      if (text !== undefined) {
+        Promise.resolve()
+          .then(() => $.ui.notice(e.tool_use_id, text))
+          .catch(() => undefined)
+      }
+    }
+    if (findSpans(command, patterns).length > 0) {
+      notify()
+      return next(e)
+    }
+    if (!hasFallback) {
+      return next(e)
+    }
+    const ran = next(e)
+    const isAsked = new Promise<true>(resolve => waiting.set(command, () => resolve(true)))
+    try {
+      if (await Promise.race([ran.then(() => false, () => false), isAsked])) {
+        const reply = await Promise.race([
+          $.model.complete({
+            model,
+            prompt: prompt(command, undefined),
+            maxTokens: 300,
+            timeoutMs: 10000,
+          }),
+          ran.then(() => undefined, () => undefined),
+        ])
+        if (reply?.isAnswered === true) {
+          notify(parseSnippets(reply.text, command))
+        }
+      }
+    } finally {
+      waiting.delete(command)
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  on('classic.PermissionRequest', ($, e, next) => {
+    const command = e.tool_name === 'Bash' ? commandOf(e.tool_input) : undefined
+    if (command !== undefined) {
+      waiting.get(command)?.()
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('classic.PermissionDenied', async ($, e, next) => {
     const call: { reason: string; snippets?: string[] } = { reason: shortReason(e.reason) }
     const command = e.tool_name === 'Bash' ? commandOf(e.tool_input) : undefined
@@ -170,11 +258,7 @@ export const register: Register = (on, options) => {
         timeoutMs: 10000,
       })
       if (reply.isAnswered) {
-        call.snippets = reply.text
-          .split('\n')
-          .map(s => s.trim().replace(/^`+|`+$/g, ''))
-          .filter(s => s !== '' && command.includes(s))
-          .slice(0, 3)
+        call.snippets = parseSnippets(reply.text, command)
       }
     }
     await update($, blocked, map => ({ ...map, [e.tool_use_id]: call }))

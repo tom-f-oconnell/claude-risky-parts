@@ -35,18 +35,21 @@ To remove it: `/plugin uninstall auto-mode-red`.
   and a dim reminder that `/permissions` lists recent blocks.
 - A collapsed group of calls ("Ran 3 commands") that holds a blocked call is drawn with
   each call on its own row, so the block can't hide inside the summary.
-
-Only calls auto mode actually blocked are restyled. Permission dialogs aren't, because
-Claude Code doesn't let plugins draw those.
+- When a Bash command gets a permission dialog instead of a block, one line under the
+  dialog names the risky parts with their line numbers, e.g.
+  `2 risky parts:  (1) line 24: sudo rm -rf /x   (2) line 26: git push --force o m`.
+  The dialog itself can't be recolored: Claude Code doesn't let plugins draw it.
 
 The classifier blocks a command as a whole and gives only a category as its reason, so the
 plugin works out the risky part itself, and can get it wrong:
 
 1. It matches a list of risky shapes (`curl … | sh`, `sudo`, `rm -rf`, `git push --force`,
    reads of SSH keys, and so on: `hooks/patterns.ts`).
-2. If none match, it asks a small model (Haiku by default) which part caused the block.
-   That is one short request per such block, and delays the block's report by a moment.
-3. If that finds nothing either, the whole command is drawn in red.
+2. If none match, it asks a small model (Haiku by default) which part is the cause. That
+   is one short request per block or dialog, never per command; it delays a block's
+   report by a moment, and under a dialog the line appears once the model has answered.
+3. If that finds nothing either, a blocked command is drawn in red as a whole, and a
+   dialog gets no line.
 
 ## Options
 
