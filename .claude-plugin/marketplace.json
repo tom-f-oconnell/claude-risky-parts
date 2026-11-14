@@ -1,0 +1,6 @@
+{
+  "name": "claude-auto-mode-red",
+  "description": "auto-mode-red: shows tool calls Claude Code's auto mode blocked in red.",
+  "owner": { "name": "tom-f-oconnell" },
+  "plugins": [{ "name": "auto-mode-red", "source": "./" }]
+}
