@@ -9,6 +9,15 @@ const MARKER = 'denied by the Claude Code auto mode classifier'
 
 const blocked = atom({ plugin: 'auto-mode-red', key: 'blocked' } as const, {} as Blocked)
 
+/** The classifier's reason alone: its first sentence, without the guidance the
+ * model reads after it.
+ */
+function shortReason(reason: string): string {
+  const line = reason.split('\n')[0] ?? ''
+  const end = line.indexOf('. ')
+  return (end < 0 ? line : line.slice(0, end)).trim().replace(/\.$/, '')
+}
+
 function textOf(output: unknown): string | undefined {
   if (typeof output === 'string') {
     return output
@@ -41,13 +50,12 @@ async function blockReason(
   if (text === undefined || at < 0) {
     return undefined
   }
-  return /Reason: ([^\n]*)/.exec(text.slice(at))?.[1]?.trim() ?? ''
+  return shortReason(/Reason: ([^\n]*)/.exec(text.slice(at))?.[1] ?? '')
 }
 
 export const register: Register = on => {
   on('classic.PermissionDenied', async ($, e, next) => {
-    const reason = e.reason.split('\n')[0]?.trim() ?? ''
-    await update($, blocked, map => ({ ...map, [e.tool_use_id]: reason }))
+    await update($, blocked, map => ({ ...map, [e.tool_use_id]: shortReason(e.reason) }))
 
     return next(e)
   }).catch(($, e, next) => next(e))

@@ -4,7 +4,8 @@ const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 
 const DENIAL =
   'Permission for this action was denied by the Claude Code auto mode ' +
-  'classifier. Reason: Deletes files outside the project\nIf you believe...'
+  'classifier. Reason: [Unauthorized Access]. If you have other tasks that ' +
+  "don't depend on this action, continue working on those. IMPORTANT: ..."
 
 function toolUse(id: string, output?: unknown) {
   return {
@@ -95,7 +96,7 @@ test('a denial is recognized from its text alone, as after a resume', async ($, 
 
   const result = await $.ui.mount({ ...toolResult('toolu_3', DENIAL), surface: 'terminal' })
   const line = await result.find({ type: 'Text', text: /Blocked by auto mode/ })
-  expect(line?.text).toBe('Blocked by auto mode: Deletes files outside the project')
+  expect(line?.text).toBe('Blocked by auto mode: [Unauthorized Access]')
   await result.unmount()
 })
 
