@@ -1,9 +1,31 @@
 {
   "name": "auto-mode-red",
-  "version": "0.1.0",
-  "description": "Draws tool calls the auto mode classifier blocked in red: a red border around the call and its reason in red.",
-  "author": { "name": "tom-f-oconnell" },
+  "version": "0.2.0",
+  "description": "Highlights in red the part of a command that got it blocked by the auto mode classifier, and shows the classifier's reason in red.",
+  "author": {
+    "name": "tom-f-oconnell"
+  },
   "homepage": "https://github.com/tom-f-oconnell/claude-auto-mode-red",
   "license": "GPL-3.0-only",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "modelFallback": {
+      "type": "boolean",
+      "title": "Ask a model when no pattern matches",
+      "description": "When none of the risky-command patterns match a blocked command, ask a small model which part got it blocked.",
+      "default": true
+    },
+    "model": {
+      "type": "string",
+      "title": "Fallback model",
+      "description": "The model asked when no pattern matches: an alias such as haiku, or a full model id.",
+      "default": "haiku"
+    },
+    "extraPatterns": {
+      "type": "string",
+      "title": "Extra patterns",
+      "description": "More regular expressions to highlight in blocked commands, separated by \" ;; \" (for example: terraform\\s+apply ;; \\bprod-db\\b).",
+      "default": ""
+    }
+  }
 }
