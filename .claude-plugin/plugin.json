@@ -4,5 +4,6 @@
   "description": "Draws tool calls the auto mode classifier blocked in red: a red border around the call and its reason in red.",
   "author": { "name": "tom-f-oconnell" },
   "homepage": "https://github.com/tom-f-oconnell/claude-auto-mode-red",
+  "license": "GPL-3.0-only",
   "types": "./types/index.d.ts"
 }
