@@ -1,16 +1,16 @@
-/** One call the auto mode classifier blocked. */
-export type BlockedCall = {
-  /** The classifier's reason, '' if it gave none. */
-  reason: string
-  /** The parts of the command a model named as the cause, verbatim. */
-  snippets?: readonly string[]
+/** One Bash call with a permission dialog open. */
+export type AskingCall = {
+  /** The parts of the command a model named as risky, verbatim. */
+  snippets: readonly string[]
+  /** The lines that name the risky parts: a header, then one per part. */
+  lines: readonly string[]
 }
 
-/** The blocked calls by tool_use_id (a bare string is version 0.1's reason). */
-export type Blocked = Readonly<Record<string, BlockedCall | string>>
+/** The Bash calls with a permission dialog open, by tool_use_id. */
+export type Asking = Readonly<Record<string, AskingCall>>
 
 declare module 'claude-code' {
   interface PluginState {
-    'auto-mode-red': { blocked: Blocked }
+    'auto-mode-red': { asking: Asking }
   }
 }

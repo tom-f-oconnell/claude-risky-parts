@@ -1,69 +1,25 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, StateDollar } from 'claude-code'
+import type { Register } from 'claude-code'
 
-import type { Blocked, BlockedCall } from '../types'
+import type { Asking } from '../types'
 import { PATTERNS } from './patterns'
 
-// The start of what the model reads for a call the classifier blocked, which
-// is all a session resumed from before this mod loaded has to go on.
-const MARKER = 'denied by the Claude Code auto mode classifier'
-// Lines of an unexpanded command shown around each highlighted part, and
-// shown in all when no part could be singled out.
+const PANE = 'risky'
+// Lines of the command shown around each highlighted part in its row.
 const CONTEXT = 1
 const HEAD = 8
-const MAX_NOTICE_PARTS = 4
+const MAX_PARTS = 4
+const WORDS = 3
 
-const blocked = atom({ plugin: 'auto-mode-red', key: 'blocked' } as const, {} as Blocked)
+const asking = atom({ plugin: 'auto-mode-red', key: 'asking' } as const, {} as Asking)
 
 type Span = readonly [start: number, end: number]
-
-/** The classifier's reason alone: its first sentence, without the guidance the
- * model reads after it.
- */
-function shortReason(reason: string): string {
-  const line = reason.split('\n')[0] ?? ''
-  const end = line.indexOf('. ')
-  return (end < 0 ? line : line.slice(0, end)).trim().replace(/\.$/, '')
-}
-
-function textOf(output: unknown): string | undefined {
-  if (typeof output === 'string') {
-    return output
-  }
-  if (Array.isArray(output)) {
-    return output.map(textOf).filter(t => t !== undefined).join('\n')
-  }
-  if (typeof output === 'object' && output !== null && 'text' in output) {
-    return typeof output.text === 'string' ? output.text : undefined
-  }
-  return undefined
-}
 
 function commandOf(input: unknown): string | undefined {
   if (typeof input === 'object' && input !== null && 'command' in input) {
     return typeof input.command === 'string' ? input.command : undefined
   }
   return undefined
-}
-
-/** Returns the call's record if the classifier blocked it, else undefined. */
-async function blockedCall(
-  $: StateDollar,
-  toolUseId: string | undefined,
-  output: unknown,
-): Promise<BlockedCall | undefined> {
-  if (toolUseId !== undefined) {
-    const call = (await read($, blocked))[toolUseId]
-    if (call !== undefined) {
-      return typeof call === 'string' ? { reason: call } : call
-    }
-  }
-  const text = textOf(output)
-  const at = text?.indexOf(MARKER) ?? -1
-  if (text === undefined || at < 0) {
-    return undefined
-  }
-  return { reason: shortReason(/Reason: ([^\n]*)/.exec(text.slice(at))?.[1] ?? '') }
 }
 
 function compile(sources: readonly string[]): RegExp[] {
@@ -81,7 +37,7 @@ function compile(sources: readonly string[]): RegExp[] {
 /** Returns the parts of `command` to highlight, in order and not overlapping:
  * every match of a pattern and every occurrence of a snippet.
  */
-export function findSpans(
+function findSpans(
   command: string,
   patterns: readonly RegExp[],
   snippets: readonly string[] = [],
@@ -135,26 +91,27 @@ function pieces(line: string, lineStart: number, spans: readonly Span[]) {
   return out
 }
 
-/** The one line shown under a permission dialog: each highlighted part with
- * its line number, cut short. Undefined when there is none.
+/** Returns the lines that name the risky parts: each part's first words with
+ * its line number out of the command's lines, under a header when several.
+ * Empty when there are none.
  */
-export function noticeFor(command: string, spans: readonly Span[]): string | undefined {
-  if (spans.length === 0) {
-    return undefined
-  }
-  const isMultiline = command.includes('\n')
-  const parts = spans.slice(0, MAX_NOTICE_PARTS).map(([start, end]) => {
-    const text = command.slice(start, end).replace(/\s+/g, ' ')
-    const short = text.length > 60 ? `${text.slice(0, 59)}…` : text
+function noticeLines(command: string, spans: readonly Span[]): string[] {
+  const total = command.split('\n').length
+  const parts = spans.slice(0, MAX_PARTS).map(([start, end]) => {
+    const words = command.slice(start, end).trim().split(/\s+/)
+    const short = words.length > WORDS ? `${words.slice(0, WORDS).join(' ')} …` : words.join(' ')
     const line = command.slice(0, start).split('\n').length
-    return isMultiline ? `line ${line}: ${short}` : short
+    return total > 1 ? `line ${line}/${total}: ${short}` : short
   })
+  if (parts.length <= 1) {
+    return parts.map(part => `Risky part: ${part}`)
+  }
   const more = spans.length - parts.length
-  return (
-    (spans.length === 1 ? 'Risky part: ' : `${spans.length} risky parts:  `) +
-    parts.map((part, i) => (spans.length === 1 ? part : `(${i + 1}) ${part}`)).join('   ') +
-    (more > 0 ? `   and ${more} more` : '')
-  )
+  return [
+    `${spans.length} risky parts:`,
+    ...parts.map((part, i) => `(${i + 1}) ${part}`),
+    ...(more > 0 ? [`and ${more} more`] : []),
+  ]
 }
 
 function parseSnippets(reply: string, command: string): string[] {
@@ -165,13 +122,10 @@ function parseSnippets(reply: string, command: string): string[] {
     .slice(0, 3)
 }
 
-function prompt(command: string, reason: string | undefined): string {
+function prompt(command: string): string {
   return (
-    (reason === undefined
-      ? 'A safety classifier wants a person to approve the shell command below before it runs.'
-      : 'A safety classifier blocked the shell command below' +
-        (reason === '' ? '.' : `, giving the reason: ${reason}`)) +
-    '\nReply with the part of the command most likely to have caused that, ' +
+    'A safety check wants a person to approve the shell command below before it ' +
+    'runs.\nReply with the part of the command most likely to have caused that, ' +
     'copied exactly, character for character, as short as identifies it (one ' +
     'command or pipeline, not the whole script). If several separate parts ' +
     'did, give each on its own line, three at most. Reply with those parts ' +
@@ -183,57 +137,115 @@ function prompt(command: string, reason: string | undefined): string {
 }
 
 export const register: Register = (on, options) => {
-  const extra = typeof options.extraPatterns === 'string' ? options.extraPatterns : ''
+  const text = (key: string) => {
+    const value = options[key]
+    return typeof value === 'string' ? value.trim() : ''
+  }
   const patterns = compile([
     ...PATTERNS,
-    ...extra.split(' ;; ').map(s => s.trim()).filter(s => s !== ''),
+    ...text('extraPatterns').split(' ;; ').map(s => s.trim()).filter(s => s !== ''),
   ])
-  const model = typeof options.model === 'string' ? options.model.trim() : ''
+  const model = text('model')
   const hasFallback = options.modelFallback !== false && model !== ''
+  const noticeCommand = text('noticeCommand')
+  const clearCommand = text('noticeClearCommand')
 
   // Bash calls in flight by command, each waiting to hear that a permission
   // dialog is opening for it.
   const waiting = new Map<string, () => void>()
 
-  // Under a Bash call's permission dialog, one line naming the risky parts.
-  // Patterns are matched before the dialog can open; the model is asked only
-  // once one is opening, from this hook, which is alive for as long as it is.
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'risky',
+      description: 'Open a pane listing the risky parts of a command awaiting approval',
+    })
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'risky' }, async $ => {
+    const opened = await $.ui.open({ id: PANE, title: 'Risky parts' })
+
+    return { text: opened.isPlaced ? 'Risky parts pane opened.' : `Not opened: ${opened.reason}` }
+  })
+
+  // Nothing is shown for a Bash call until a permission dialog opens for it:
+  // patterns are matched then, and the model asked only if none match. This
+  // hook is alive for as long as the dialog is, so it also takes it all back.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const command = e.command
-    const notify = (snippets?: readonly string[]) => {
-      const text = noticeFor(command, findSpans(command, patterns, snippets))
-      if (text !== undefined) {
-        Promise.resolve()
-          .then(() => $.ui.notice(e.tool_use_id, text))
-          .catch(() => undefined)
+    const hasPattern = findSpans(command, patterns).length > 0
+    if (!hasPattern && !hasFallback) {
+      return next(e)
+    }
+    const env = { AUTO_MODE_RED_ID: e.tool_use_id, AUTO_MODE_RED_ROOT: $.plugin.root }
+    let isShown = false
+    let isNoticed = false
+    let didOpenPane = false
+
+    const show = async (snippets: readonly string[] = []) => {
+      const lines = noticeLines(command, findSpans(command, patterns, snippets))
+      if (lines.length === 0) {
+        return
+      }
+      isShown = true
+      await update($, asking, map => ({ ...map, [e.tool_use_id]: { snippets, lines } }))
+      await $.ui.place({ id: e.tool_use_id })
+      // The pane is opened here and closed after, unless it was open already.
+      const wasOpen = (await $.ui.panes()).some(pane => pane.id === PANE)
+      const opened = await $.ui
+        .open({ id: PANE, title: 'Risky parts' })
+        .catch(() => ({ isPlaced: false }))
+      didOpenPane = !wasOpen
+      if (noticeCommand !== '') {
+        isNoticed = true
+        await $.process
+          .run(['sh', '-c', noticeCommand], {
+            env: {
+              ...env,
+              AUTO_MODE_RED_TEXT: lines.join('\n'),
+              AUTO_MODE_RED_PANE: opened.isPlaced ? '1' : '0',
+            },
+            timeoutMs: 10000,
+          })
+          .catch((error: unknown) => $.ui.log(`notice command failed: ${String(error)}`))
       }
     }
-    if (findSpans(command, patterns).length > 0) {
-      notify()
-      return next(e)
-    }
-    if (!hasFallback) {
-      return next(e)
-    }
+
     const ran = next(e)
+    const settled = ran.then(() => undefined, () => undefined)
     const isAsked = new Promise<true>(resolve => waiting.set(command, () => resolve(true)))
     try {
-      if (await Promise.race([ran.then(() => false, () => false), isAsked])) {
-        const reply = await Promise.race([
-          $.model.complete({
-            model,
-            prompt: prompt(command, undefined),
-            maxTokens: 300,
-            timeoutMs: 10000,
-          }),
-          ran.then(() => undefined, () => undefined),
-        ])
-        if (reply?.isAnswered === true) {
-          notify(parseSnippets(reply.text, command))
+      if (await Promise.race([settled, isAsked])) {
+        if (hasPattern) {
+          await show()
+        } else {
+          const reply = await Promise.race([
+            $.model.complete({ model, prompt: prompt(command), maxTokens: 300, timeoutMs: 10000 }),
+            settled,
+          ])
+          if (reply?.isAnswered === true) {
+            await show(parseSnippets(reply.text, command))
+          }
         }
       }
+      await settled
     } finally {
       waiting.delete(command)
+      if (isNoticed && clearCommand !== '') {
+        await $.process
+          .run(['sh', '-c', clearCommand], { env, timeoutMs: 10000 })
+          .catch(() => undefined)
+      }
+      if (didOpenPane) {
+        await $.ui.close({ id: PANE }).catch(() => undefined)
+      }
+      if (isShown) {
+        await update($, asking, map => {
+          const { [e.tool_use_id]: _, ...rest } = map
+          return rest
+        })
+      }
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -246,29 +258,10 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('classic.PermissionDenied', async ($, e, next) => {
-    const call: { reason: string; snippets?: string[] } = { reason: shortReason(e.reason) }
-    const command = e.tool_name === 'Bash' ? commandOf(e.tool_input) : undefined
-
-    if (hasFallback && command !== undefined && findSpans(command, patterns).length === 0) {
-      const reply = await $.model.complete({
-        model,
-        prompt: prompt(command, call.reason),
-        maxTokens: 300,
-        timeoutMs: 10000,
-      })
-      if (reply.isAnswered) {
-        call.snippets = parseSnippets(reply.text, command)
-      }
-    }
-    await update($, blocked, map => ({ ...map, [e.tool_use_id]: call }))
-
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  // A blocked Bash call's row: the command, the part that got it blocked in red.
+  // The call's row above its dialog: the command, cut down to the lines around
+  // the risky parts, those in red.
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    const call = await blockedCall($, e.props.tool_use_id, e.props.output)
+    const call = (await read($, asking))[e.props.tool_use_id]
     const command = e.props.tool === 'Bash' ? commandOf(e.props.input) : undefined
     if (call === undefined || command === undefined) {
       return next(e)
@@ -286,15 +279,12 @@ export const register: Register = (on, options) => {
       const start = starts[i] ?? 0
       return spans.some(([from, to]) => from < start + line.length + 1 && to > start)
     })
-    const isShown = lines.map((_, i) => {
-      if (e.props.isExpanded === true || lines.length <= HEAD) {
-        return true
-      }
-      if (spans.length === 0) {
-        return i < HEAD
-      }
-      return i === 0 || isHit.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some(Boolean)
-    })
+    const isShown = lines.map(
+      (_, i) =>
+        lines.length <= HEAD ||
+        i === 0 ||
+        isHit.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some(Boolean),
+    )
 
     const rows = []
     for (let i = 0; i < lines.length; i += 1) {
@@ -308,7 +298,7 @@ export const register: Register = (on, options) => {
         continue
       }
       rows.push(
-        <Text color={spans.length === 0 ? 'error' : undefined}>
+        <Text>
           {pieces(lines[i] ?? '', starts[i] ?? 0, spans).map(piece =>
             piece.isHit ? (
               <Text color="error" bold>
@@ -321,18 +311,21 @@ export const register: Register = (on, options) => {
         </Text>,
       )
     }
+    const input = e.props.input
+    const description =
+      typeof input === 'object' &&
+      input !== null &&
+      'description' in input &&
+      typeof input.description === 'string'
+        ? ` ${input.description}`
+        : ''
 
     return (
       <Box flexDirection="column">
         <Text>
           <Text color="error">● </Text>
           <Text bold>Bash</Text>
-          {typeof e.props.input === 'object' &&
-          e.props.input !== null &&
-          'description' in e.props.input &&
-          typeof e.props.input.description === 'string'
-            ? ` ${e.props.input.description}`
-            : ''}
+          {description}
         </Text>
         <Box flexDirection="column" paddingLeft={2}>
           {rows}
@@ -341,39 +334,50 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // The engine's dim "Blocked by auto mode" line under it, redrawn in red.
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    const call = await blockedCall($, e.props.tool_use_id, e.props.output)
+  // A group of calls drawn as one line would hide that row.
+  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+    const open = await read($, asking)
+    const hasAsking = e.props.calls.some(
+      call => call.tool_use_id !== undefined && open[call.tool_use_id] !== undefined,
+    )
+    return hasAsking && !e.props.isExpanded
+      ? next({ ...e, props: { ...e.props, isExpanded: true } })
+      : next(e)
+  })
+
+  // The risky parts, in red, in a row right above the dialog, which draws
+  // nothing once the call is answered, and in the pane.
+  on('ui.render', { component: 'Placed' }, async ($, e, next) => {
+    const call = e.props.plugin === $.plugin.name ? (await read($, asking))[e.props.id] : undefined
     if (call === undefined) {
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
 
     return (
-      <Box flexDirection="row">
-        <Text dimColor>{'  ⎿  '}</Text>
-        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          <Text color="error">
-            <Text bold>Blocked by auto mode</Text>
-            {call.reason === '' ? '' : `: ${call.reason}`}
+      <Box flexDirection="column">
+        {call.lines.map(line => (
+          <Text color="error" bold>
+            {line}
           </Text>
-          <Text dimColor>/permissions to review</Text>
-        </Box>
+        ))}
       </Box>
     )
   })
 
-  // A collapsed group ("Ran 3 commands") would hide the blocked call's row, so
-  // such a group is drawn with each call on its own row.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    if (e.props.isExpanded) {
-      return next(e)
-    }
-    for (const call of e.props.calls) {
-      if ((await blockedCall($, call.tool_use_id, call.output)) !== undefined) {
-        return next({ ...e, props: { ...e.props, isExpanded: true } })
-      }
-    }
-    return next(e)
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const lines = Object.values(await read($, asking)).flatMap(call => call.lines)
+
+    return (
+      <Box flexDirection="column">
+        {lines.length === 0 && <Text dimColor>No command is awaiting approval.</Text>}
+        {lines.map(line => (
+          <Text color="error" bold>
+            {line}
+          </Text>
+        ))}
+      </Box>
+    )
   })
 }

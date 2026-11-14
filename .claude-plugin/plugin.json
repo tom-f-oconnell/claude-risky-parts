@@ -1,7 +1,7 @@
 {
   "name": "auto-mode-red",
-  "version": "0.3.0",
-  "description": "Highlights in red the part of a command that got it blocked by the auto mode classifier, and shows the classifier's reason in red.",
+  "version": "0.4.0",
+  "description": "When a permission dialog opens for a Bash command, shows which parts of the command are risky, in red: above the dialog, in a side pane, and in the tmux status line or a desktop notification.",
   "author": {
     "name": "tom-f-oconnell"
   },
@@ -12,7 +12,7 @@
     "modelFallback": {
       "type": "boolean",
       "title": "Ask a model when no pattern matches",
-      "description": "When none of the risky-command patterns match a blocked command, ask a small model which part got it blocked.",
+      "description": "When none of the risky-command patterns match a command awaiting approval, ask a small model which part is risky.",
       "default": true
     },
     "model": {
@@ -24,8 +24,20 @@
     "extraPatterns": {
       "type": "string",
       "title": "Extra patterns",
-      "description": "More regular expressions to highlight in blocked commands, separated by \" ;; \" (for example: terraform\\s+apply ;; \\bprod-db\\b).",
+      "description": "More regular expressions to treat as risky, separated by \" ;; \" (for example: terraform\\s+apply ;; \\bprod-db\\b).",
       "default": ""
+    },
+    "noticeCommand": {
+      "type": "string",
+      "title": "Command when a dialog opens",
+      "description": "A shell command run when a permission dialog opens for a Bash command with risky parts. Default: the bundled script (the tmux status line in red; a desktop notification where the pane could not open). Empty: none. It gets $AUTO_MODE_RED_TEXT, $AUTO_MODE_RED_PANE (1 if the pane is showing), $AUTO_MODE_RED_ID and $AUTO_MODE_RED_ROOT.",
+      "default": "sh \"$AUTO_MODE_RED_ROOT/scripts/notice.sh\" show"
+    },
+    "noticeClearCommand": {
+      "type": "string",
+      "title": "Command when the dialog is answered",
+      "description": "A shell command run once that dialog is answered or times out, to take the notice back.",
+      "default": "sh \"$AUTO_MODE_RED_ROOT/scripts/notice.sh\" clear"
     }
   }
 }
